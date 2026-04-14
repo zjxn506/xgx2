@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>管理员后台</title>
+<style>
+* {margin:0;padding:0;box-sizing:border-box;font-family:"Microsoft Yahei",Arial,sans-serif;}
+body{background:#f5f7fa;min-height:100vh;}
+.top-bar{height:80px;background:#fff;border-bottom:1px solid #e4e7ed;display:flex;align-items:center;justify-content:space-between;padding:0 20px;}
+.top-bar .logo{font-size:28px;font-weight:bold;color:#303133;}
+.top-bar .user-info{display:flex;align-items:center;gap:15px;font-size:20px;}
+.top-bar .user-info .avatar{width:50px;height:50px;border-radius:50%;background:#409eff;color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;}
+.sidebar{width:220px;background:#2b3a55;position:fixed;top:80px;left:0;bottom:0;padding-top:10px;}
+.sidebar .menu-item{color:#bfcbd9;height:60px;line-height:60px;padding:0 20px;cursor:pointer;transition:all 0.3s;border-left:4px solid transparent;font-size:18px;}
+.sidebar .menu-item:hover,.sidebar .menu-item.active{background:#202c3f;color:#fff;border-left-color:#409eff;}
+.sidebar .menu-item-danger{background:#F56C6C !important;border-left-color:#F56C6C !important;color:#fff !important;}
+.main-content{margin-left:220px;margin-top:80px;padding:30px;min-height:calc(100vh - 80px);}
+.page{display:none;background:#fff;border-radius:12px;padding:30px;box-shadow:0 2px 12px 0 rgba(0,0,0,0.1);}
+.page.active{display:block;}
+.welcome-card{background:#fff;border-radius:12px;padding:40px;box-shadow:0 2px 12px rgba(0,0,0,0.1);font-size:36px;font-weight:bold;color:#303133;}
+input,button{padding:12px 20px;margin:8px 0;border-radius:6px;border:1px solid #dcdfe6;font-size:16px;}
+button{background:#409eff;color:#fff;border:none;cursor:pointer;}
+.btn-red{background:#F56C6C;}
+.btn-green{background:#67C23A;}
+.btn-orange{background:#f5a623;}
+table{width:100%;border-collapse:collapse;margin:20px 0;}
+th,td{border:1px solid #ebeef5;padding:15px;text-align:center;font-size:16px;}
+th{background:#f5f7fa;font-size:18px;}
+.excel-box{margin:10px 0;}
+.form-item{margin:15px 0;}
+.form-item label{display:inline-block;width:100px;font-size:16px;}
+</style>
+</head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<div class="top-bar">
+<div class="logo">管理员后台</div>
+<div class="user-info">
+<span id="adminName">管理员</span><div class="avatar">管</div>
+</div>
+</div>
+
+<div class="sidebar">
+<div class="menu-item active" onclick="showPage('home')">首页</div>
+<div class="menu-item" onclick="showPage('student')">干事管理</div>
+<div class="menu-item" onclick="showPage('teacher')">部长管理</div>
+<div class="menu-item" onclick="showPage('course')">课程管理</div>
+<div class="menu-item" onclick="showPage('select')">查看选课</div>
+<div class="menu-item" onclick="showPage('unselect')">未选课干事</div>
+<div class="menu-item" onclick="logout()">退出登录</div>
+</div>
+
+<div class="main-content">
+<div class="page active" id="page-home"><div class="welcome-card">欢迎使用管理系统！</div></div>
+
+<div class="page" id="page-student">
+<h2>干事管理</h2>
+<div class="excel-box">
+<input type="file" id="studentExcel" accept=".xlsx,.xls">
+<button class="btn-green" onclick="importStudentExcel()">批量导入</button>
+<button class="btn-red" onclick="batchDelStudent()" style="margin-left:10px;">批量删除选中干事</button>
+</div>
+<input id="suid" placeholder="学号" style="width:18%">
+<input id="sname" placeholder="姓名" style="width:18%">
+<input id="spwd" placeholder="密码" style="width:18%">
+<input id="sdept" placeholder="所属部门" style="width:18%">
+<button onclick="addStudent()" style="width:18%">提交</button>
+<table>
+<tr><th><input type="checkbox" id="checkAllStudent" onclick="toggleAllStudent()"> 全选</th><th>学号</th><th>姓名</th><th>密码</th><th>所属部门</th><th>操作</th></tr>
+<tbody id="studentList"></tbody>
+</table>
+</div>
+
+<div class="page" id="page-teacher">
+<h2>部长管理</h2>
+<div class="excel-box">
+<input type="file" id="teacherExcel" accept=".xlsx,.xls">
+<button class="btn-green" onclick="importTeacherExcel()">批量导入</button>
+<button class="btn-red" onclick="batchResetTeacherPwd()" style="margin-left:10px;">批量重置选中部长密码</button>
+<button class="btn-red" onclick="batchDelTeacher()" style="margin-left:10px;">批量删除选中部长</button>
+</div>
+<input id="tuid" placeholder="工号" style="width:18%">
+<input id="tname" placeholder="姓名" style="width:18%">
+<input id="tpwd" placeholder="密码" style="width:18%">
+<input id="tdept" placeholder="负责部门" style="width:18%">
+<button onclick="addTeacher()" style="width:18%">提交</button>
+<table>
+<tr><th><input type="checkbox" id="checkAllTeacher" onclick="toggleAllTeacher()"> 全选</th><th>工号</th><th>姓名</th><th>密码</th><th>负责部门</th><th>操作</th></tr>
+<tbody id="teacherList"></tbody>
+</table>
+</div>
+
+<div class="page" id="page-course">
+<h2>课程管理</h2>
+<div class="excel-box">
+<input type="file" id="courseExcel" accept=".xlsx,.xls">
+<button class="btn-green" onclick="importCourseExcel()">批量导入</button>
+<button class="btn-red" onclick="clearCourses()">清空全部</button>
+</div>
+<input id="cname" placeholder="班级名称" style="width:16%">
+<input id="ctime" placeholder="时间" style="width:16%">
+<input id="cloc" placeholder="地点" style="width:16%">
+<input id="cteacher" placeholder="辅导员" style="width:16%">
+<input id="cview" placeholder="可查看时间 例：4-20" style="width:16%">
+<input id="cselect" placeholder="可选择时间 例：4-20" style="width:16%">
+<button onclick="addCourse()" style="width:16%">提交</button>
+<table>
+<tr><th>班级</th><th>时间</th><th>地点</th><th>辅导员</th><th>可查看时间</th><th>可选择时间</th><th>操作</th></tr>
+<tbody id="courseList"></tbody>
+</table>
+</div>
+
+<div class="page" id="page-select">
+<h2>查看选课</h2>
+<button class="btn-green" onclick="exportSelectExcel()">导出选课表</button>
+<table>
+<tr><th>班级</th><th>时间</th><th>地点</th><th>辅导员</th><th>干事</th><th>部门</th></tr>
+<tbody id="selectList"></tbody>
+</table>
+</div>
+
+<div class="page" id="page-unselect">
+<h2>未选课干事名单</h2>
+<button class="btn-orange" onclick="exportUnselectExcel()">导出未选课名单</button>
+<table>
+<tr><th>学号</th><th>姓名</th><th>部门</th></tr>
+<tbody id="unselectList"></tbody>
+</table>
+</div>
+</div>
+
+<script>
+(function() {
+    const SUPABASE_URL = "https://nsyonfiaqniensvcrdao.supabase.co";
+    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5zeW9uZmlhcW5pZW5zdmNyZGFvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwNjIyNDQsImV4cCI6MjA5MTYzODI0NH0.ZxgkRA8Wp2Zy9ujwkya3apTXHECHvmeilf8qf-3MY78";
+
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    const user = JSON.parse(sessionStorage.getItem('user'));
+    if(!user || user.role !== 'admin'){alert('请登录');location.href='login.html';}
+    document.getElementById('adminName').innerText = user.name || '管理员';
+
+    // ========== 单点登录检测 ==========
+    let checkInterval = null;
+
+    async function checkSession() {
+        if(!user) return;
+        
+        try {
+            const { data, error } = await sb
+                .from('users')
+                .select('session_token')
+                .eq('uid', user.uid)
+                .maybeSingle();
+            
+            if(error) return;
+            
+            // 如果数据库中的 token 与当前不一致，说明被踢下线
+            if(data && data.session_token && data.session_token !== user.session_token) {
+                clearInterval(checkInterval);
+                sessionStorage.removeItem('user');
+                
+                // 显示被踢提示
+                const kickModal = document.createElement('div');
+                kickModal.style.cssText = 'display:flex;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);align-items:center;justify-content:center;z-index:10000;';
+                kickModal.innerHTML = `
+                    <div style="width:350px;padding:30px;border-radius:12px;background:#fff;text-align:center;">
+                        <h3 style="color:#f56c6c;margin-bottom:15px;">⚠️ 登录失效</h3>
+                        <p style="margin-bottom:20px;color:#666;">您的账号已在其他地方登录</p>
+                        <button onclick="location.href='login.html'" style="width:120px;padding:10px;background:#409eff;color:#fff;border:none;border-radius:6px;cursor:pointer;">重新登录</button>
+                    </div>
+                `;
+                document.body.appendChild(kickModal);
+            } else {
+                // 更新最后活动时间（可选）
+                await sb.from('users')
+                    .update({ last_active: new Date().toISOString() })
+                    .eq('uid', user.uid);
+            }
+        } catch(err) {
+            console.error('Session check error:', err);
+        }
+    }
+
+    // 启动定时检查（每5秒检查一次）
+    checkInterval = setInterval(checkSession, 5000);
+
+    window.$ = function(id){return document.getElementById(id);};
+    
+    window.showPage = function(pageId){
+        document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+        document.querySelectorAll('.menu-item').forEach(m=>m.classList.remove('active'));
+        document.getElementById('page-'+pageId).classList.add('active');
+        document.querySelector(`.menu-item[onclick="showPage('${pageId}')"]`).classList.add('active');
+        if(pageId==='student') refreshStudent();
+        if(pageId==='teacher') refreshTeacher();
+        if(pageId==='course') refreshCourse();
+        if(pageId==='select') refreshSelect();
+        if(pageId==='unselect') refreshUnselect();
+    };
+
+    window.logout = async function(){
+        if(confirm('确定退出？')){
+            clearInterval(checkInterval);
+            // 清除数据库中的 token
+            if(user){
+                await sb.from('users')
+                    .update({ session_token: null })
+                    .eq('uid', user.uid);
+            }
+            sessionStorage.removeItem('user');
+            location.href='login.html';
+        }
+    };
+
+    // ========== 干事管理 ==========
+    async function refreshStudent(){
+        const {data} = await sb.from('users').select('*').eq('role','user').order('uid');
+        let html='';
+        if(data){
+            data.forEach(s=>{
+                html+=`<tr><td><input type="checkbox" class="studentCheck" data-uid="${s.uid}"></td><td>${s.uid}</td><td>${s.name}</td><td>${s.pwd}</td><td>${s.dept||'未设置'}</td><td><button onclick="editStudent('${s.uid}')">修改</button> <button class="btn-red" onclick="delStudent('${s.uid}')">删除</button></td></tr>`;
+            });
+        }
+        document.getElementById('studentList').innerHTML=html||'<tr><td colspan="6">暂无干事</td></tr>';
+    }
+    window.refreshStudent = refreshStudent;
+
+    window.toggleAllStudent = function(){
+        let c = document.getElementById('checkAllStudent').checked;
+        document.querySelectorAll('.studentCheck').forEach(i=>i.checked=c);
+    };
+
+    window.batchDelStudent = async function(){
+        let checks = document.querySelectorAll('.studentCheck:checked');
+        if(checks.length===0){alert('请选择');return;}
+        if(!confirm('确定删除选中的干事？'))return;
+        let uids = Array.from(checks).map(c=>c.dataset.uid);
+        await sb.from('users').delete().in('uid',uids);
+        refreshStudent();
+        alert('删除成功');
+    };
+
+    window.addStudent = async function(){
+        let uid = document.getElementById('suid').value.trim();
+        let name = document.getElementById('sname').value.trim();
+        let pwd = document.getElementById('spwd').value.trim();
+        let dept = document.getElementById('sdept').value.trim();
+        if(!uid||!name||!pwd||!dept){alert('请填写完整');return;}
+        if(pwd.length<6){alert('密码至少6位');return;}
+        
+        const { error } = await sb.from('users').upsert([{uid,name,pwd,role:'user',dept}], {onConflict: 'uid'});
+        if(error){alert('添加失败：'+error.message);return;}
+        document.getElementById('suid').value=document.getElementById('sname').value=document.getElementById('spwd').value=document.getElementById('sdept').value='';
+        refreshStudent();
+        alert('添加成功');
+    };
+
+    window.editStudent = async function(uid){
+        const {data} = await sb.from('users').select('*').eq('uid',uid).maybeSingle();
+        if(data){
+            document.getElementById('suid').value=data.uid;
+            document.getElementById('sname').value=data.name;
+            document.getElementById('spwd').value=data.pwd;
+            document.getElementById('sdept').value=data.dept||'';
+        }
+    };
+
+    window.delStudent = async function(uid){
+        if(!confirm('确定删除？'))return;
+        await sb.from('users').delete().eq('uid',uid);
+        refreshStudent();
+    };
+
+    window.importStudentExcel = async function(){
+        let f = document.getElementById('studentExcel').files[0];
+        if(!f){alert('请选择文件');return;}
+        
+        let r = new FileReader();
+        r.onload = async e => {
+            try {
+                let wb = XLSX.read(e.target.result, {type:'binary'});
+                let sheet = wb.Sheets[wb.SheetNames[0]];
+                let data = XLSX.utils.sheet_to_json(sheet);
+                
+                console.log('读取到 ' + data.length + ' 条数据');
+                
+                let validData = [];
+                
+                for(let row of data){
+                    let uid = row['学号'] || row['uid'] || row['UID'] || row['工号'] || row['id'];
+                    let name = row['姓名'] || row['name'] || row['Name'];
+                    let pwd = row['密码'] || row['pwd'] || row['PWD'];
+                    let dept = row['所属部门'] || row['dept'] || row['部门'] || '';
+                    
+                    if(uid && name && pwd){
+                        uid = String(uid).trim();
+                        name = String(name).trim();
+                        pwd = String(pwd).trim();
+                        dept = String(dept).trim();
+                        
+                        validData.push({uid, name, pwd, role:'user', dept: dept||'未设置'});
+                    }
+                }
+                
+                console.log('有效数据 ' + validData.length + ' 条');
+                
+                if(validData.length === 0){
+                    alert('没有有效数据');
+                    return;
+                }
+                
+                let success = 0;
+                let failed = [];
+                
+                for(let item of validData){
+                    try {
+                        const { error } = await sb.from('users').upsert([item], {onConflict: 'uid'});
+                        if(!error){
+                            success++;
+                        } else {
+                            failed.push(item.uid);
+                        }
+                    } catch(err) {
+                        failed.push(item.uid);
+                    }
+                }
+                
+                console.log('导入完成：成功 ' + success + ' 条，失败 ' + failed.length + ' 条');
+                
+                if(failed.length > 0){
+                    alert('导入完成！成功 ' + success + ' 条\n失败学号：' + failed.slice(0,10).join(', ') + (failed.length>10?'...':''));
+                } else {
+                    alert('✅ 导入成功！共 ' + success + ' 条');
+                }
+                
+                setTimeout(() => refreshStudent(), 500);
+                document.getElementById('studentExcel').value='';
+            } catch(err) {
+                console.error('导入错误:', err);
+                alert('导入失败：' + err.message);
+            }
+        };
+        r.readAsBinaryString(f);
+    };
+
+    // ========== 部长管理 ==========
+    async function refreshTeacher(){
+        const {data} = await sb.from('users').select('*').eq('role','teacher').order('uid');
+        let html='';
+        if(data){
+            data.forEach(t=>{
+                html+=`<tr><td><input type="checkbox" class="teacherCheck" data-uid="${t.uid}"></td><td>${t.uid}</td><td>${t.name}</td><td>${t.pwd}</td><td>${t.dept||'未设置'}</td><td><button onclick="editTeacher('${t.uid}')">修改</button> <button class="btn-red" onclick="delTeacher('${t.uid}')">删除</button></td></tr>`;
+            });
+        }
+        document.getElementById('teacherList').innerHTML=html||'<tr><td colspan="6">暂无部长</td></tr>';
+    }
+    window.refreshTeacher = refreshTeacher;
+
+    window.toggleAllTeacher = function(){
+        let c = document.getElementById('checkAllTeacher').checked;
+        document.querySelectorAll('.teacherCheck').forEach(i=>i.checked=c);
+    };
+
+    window.batchResetTeacherPwd = async function(){
+        let checks = document.querySelectorAll('.teacherCheck:checked');
+        if(checks.length===0){alert('请选择');return;}
+        if(!confirm('确定重置选中部长的密码为 666666？'))return;
+        let uids = Array.from(checks).map(c=>c.dataset.uid);
+        await sb.from('users').update({pwd:'666666'}).in('uid',uids);
+        refreshTeacher();
+        alert('重置成功');
+    };
+
+    window.batchDelTeacher = async function(){
+        let checks = document.querySelectorAll('.teacherCheck:checked');
+        if(checks.length===0){alert('请选择');return;}
+        if(!confirm('确定删除选中的部长？'))return;
+        let uids = Array.from(checks).map(c=>c.dataset.uid);
+        await sb.from('users').delete().in('uid',uids);
+        refreshTeacher();
+        alert('删除成功');
+    };
+
+    window.addTeacher = async function(){
+        let uid = document.getElementById('tuid').value.trim();
+        let name = document.getElementById('tname').value.trim();
+        let pwd = document.getElementById('tpwd').value.trim();
+        let dept = document.getElementById('tdept').value.trim();
+        if(!uid||!name||!pwd||!dept){alert('请填写完整');return;}
+        if(pwd.length<6){alert('密码至少6位');return;}
+        
+        const { error } = await sb.from('users').upsert([{uid,name,pwd,role:'teacher',dept}], {onConflict: 'uid'});
+        if(error){alert('添加失败：'+error.message);return;}
+        document.getElementById('tuid').value=document.getElementById('tname').value=document.getElementById('tpwd').value=document.getElementById('tdept').value='';
+        refreshTeacher();
+        alert('添加成功');
+    };
+
+    window.editTeacher = async function(uid){
+        const {data} = await sb.from('users').select('*').eq('uid',uid).maybeSingle();
+        if(data){
+            document.getElementById('tuid').value=data.uid;
+            document.getElementById('tname').value=data.name;
+            document.getElementById('tpwd').value=data.pwd;
+            document.getElementById('tdept').value=data.dept||'';
+        }
+    };
+
+    window.delTeacher = async function(uid){
+        if(!confirm('确定删除？'))return;
+        await sb.from('users').delete().eq('uid',uid);
+        refreshTeacher();
+    };
+
+    window.importTeacherExcel = async function(){
+        let f = document.getElementById('teacherExcel').files[0];
+        if(!f){alert('请选择文件');return;}
+        
+        let r = new FileReader();
+        r.onload = async e => {
+            try {
+                let wb = XLSX.read(e.target.result, {type:'binary'});
+                let sheet = wb.Sheets[wb.SheetNames[0]];
+                let data = XLSX.utils.sheet_to_json(sheet);
+                
+                console.log('读取到 ' + data.length + ' 条数据');
+                
+                let validData = [];
+                
+                for(let row of data){
+                    let uid = row['工号'] || row['uid'] || row['UID'] || row['学号'] || row['id'];
+                    let name = row['姓名'] || row['name'] || row['Name'];
+                    let pwd = row['密码'] || row['pwd'] || row['PWD'];
+                    let dept = row['负责部门'] || row['dept'] || row['部门'] || '';
+                    
+                    if(uid && name && pwd){
+                        uid = String(uid).trim();
+                        name = String(name).trim();
+                        pwd = String(pwd).trim();
+                        dept = String(dept).trim();
+                        
+                        validData.push({uid, name, pwd, role:'teacher', dept: dept||'未设置'});
+                    }
+                }
+                
+                console.log('有效数据 ' + validData.length + ' 条');
+                
+                if(validData.length === 0){
+                    alert('没有有效数据');
+                    return;
+                }
+                
+                let success = 0;
+                let failed = [];
+                
+                for(let item of validData){
+                    try {
+                        const { error } = await sb.from('users').upsert([item], {onConflict: 'uid'});
+                        if(!error){
+                            success++;
+                        } else {
+                            failed.push(item.uid);
+                        }
+                    } catch(err) {
+                        failed.push(item.uid);
+                    }
+                }
+                
+                console.log('导入完成：成功 ' + success + ' 条，失败 ' + failed.length + ' 条');
+                
+                if(failed.length > 0){
+                    alert('导入完成！成功 ' + success + ' 条\n失败工号：' + failed.slice(0,10).join(', '));
+                } else {
+                    alert('✅ 导入成功！共 ' + success + ' 条');
+                }
+                
+                setTimeout(() => refreshTeacher(), 500);
+                document.getElementById('teacherExcel').value='';
+            } catch(err) {
+                console.error('导入错误:', err);
+                alert('导入失败：' + err.message);
+            }
+        };
+        r.readAsBinaryString(f);
+    };
+
+    // ========== 课程管理 ==========
+    async function refreshCourse(){
+        const {data} = await sb.from('courses').select('*').order('id');
+        let html='';
+        if(data){
+            data.forEach(c=>{
+                html+=`<tr><td>${c.name}</td><td>${c.time}</td><td>${c.loc}</td><td>${c.teacher}</td><td>${c.viewDate||'无限制'}</td><td>${c.selectDate||'无限制'}</td><td><button onclick="editCourse('${c.id}')">修改</button> <button class="btn-red" onclick="delCourse('${c.id}')">删除</button></td></tr>`;
+            });
+        }
+        document.getElementById('courseList').innerHTML=html||'<tr><td colspan="7">暂无课程</td></tr>';
+    }
+    window.refreshCourse = refreshCourse;
+
+    window.addCourse = async function(){
+        let name = document.getElementById('cname').value.trim();
+        let time = document.getElementById('ctime').value.trim();
+        let loc = document.getElementById('cloc').value.trim();
+        let teacher = document.getElementById('cteacher').value.trim();
+        let viewDate = document.getElementById('cview').value.trim();
+        let selectDate = document.getElementById('cselect').value.trim();
+        if(!name||!time||!loc||!teacher){alert('请填写完整');return;}
+        let id = "course_"+Date.now();
+        await sb.from('courses').insert([{id,name,time,loc,teacher,viewDate,selectDate}]);
+        document.getElementById('cname').value=document.getElementById('ctime').value=document.getElementById('cloc').value=document.getElementById('cteacher').value=document.getElementById('cview').value=document.getElementById('cselect').value='';
+        refreshCourse();
+        alert('添加成功');
+    };
+
+    window.editCourse = async function(id){
+        const {data} = await sb.from('courses').select('*').eq('id',id).maybeSingle();
+        if(data){
+            document.getElementById('cname').value=data.name;
+            document.getElementById('ctime').value=data.time;
+            document.getElementById('cloc').value=data.loc;
+            document.getElementById('cteacher').value=data.teacher;
+            document.getElementById('cview').value=data.viewDate||'';
+            document.getElementById('cselect').value=data.selectDate||'';
+        }
+    };
+
+    window.delCourse = async function(id){
+        if(!confirm('确定删除？'))return;
+        await sb.from('courses').delete().eq('id',id);
+        refreshCourse();
+    };
+
+    window.clearCourses = async function(){
+        if(!confirm('确定清空所有课程？'))return;
+        await sb.from('courses').delete().gt('id','');
+        refreshCourse();
+    };
+
+    window.importCourseExcel = async function(){
+        let f = document.getElementById('courseExcel').files[0];
+        if(!f){alert('请选择文件');return;}
+        let r = new FileReader();
+        r.onload = async e => {
+            try {
+                let wb = XLSX.read(e.target.result,{type:'binary'});
+                let sheet = wb.Sheets[wb.SheetNames[0]];
+                let data = XLSX.utils.sheet_to_json(sheet);
+                console.log('读取到 ' + data.length + ' 条课程');
+                
+                for(let row of data){
+                    let name = row['班级名称'] || row['name'] || row['班级'] || '';
+                    if(name){
+                        let id = "c"+Date.now()+Math.random().toString(36).substr(2,5);
+                        await sb.from('courses').insert([{
+                            id, 
+                            name: name,
+                            time: row['时间'] || row['time'] || '',
+                            loc: row['地点'] || row['loc'] || '',
+                            teacher: row['辅导员'] || row['teacher'] || '',
+                            viewDate: row['可查看时间'] || row['viewDate'] || '',
+                            selectDate: row['可选择时间'] || row['selectDate'] || ''
+                        }]);
+                    }
+                }
+                refreshCourse();
+                alert('导入成功');
+                document.getElementById('courseExcel').value='';
+            } catch(err) {
+                alert('导入失败：'+err.message);
+            }
+        };
+        r.readAsBinaryString(f);
+    };
+
+    // ========== 查看选课 ==========
+    async function refreshSelect(){
+        const {data:courses} = await sb.from('courses').select('*');
+        const {data:selects} = await sb.from('selects').select('*');
+        const {data:users} = await sb.from('users').select('*');
+        let html='';
+        if(courses){
+            courses.forEach(c=>{
+                let arr=(selects||[]).filter(s=>s.cid===c.id).map(s=>s.name+'('+s.uid+')').join(' ')||'无';
+                let depts=(selects||[]).filter(s=>s.cid===c.id).map(s=>users?.find(x=>x.uid===s.uid)?.dept||'无').join(' ');
+                html+=`<tr><td>${c.name}</td><td>${c.time}</td><td>${c.loc}</td><td>${c.teacher}</td><td>${arr}</td><td>${depts}</td></tr>`;
+            });
+        }
+        document.getElementById('selectList').innerHTML=html||'<tr><td colspan="6">暂无选课</td></tr>';
+    }
+    window.refreshSelect = refreshSelect;
+
+    window.exportSelectExcel = function(){
+        let rows = [['班级','时间','地点','辅导员','干事','部门']];
+        document.querySelectorAll('#selectList tr').forEach(tr => {
+            let row = [];
+            tr.querySelectorAll('td').forEach(td => row.push(td.innerText));
+            if(row.length) rows.push(row);
+        });
+        let ws = XLSX.utils.aoa_to_sheet(rows);
+        let wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, '选课表');
+        XLSX.writeFile(wb, '选课表.xlsx');
+    };
+
+    // ========== 未选课干事 ==========
+    async function refreshUnselect(){
+        const {data:users} = await sb.from('users').select('*');
+        const {data:selects} = await sb.from('selects').select('*');
+        let students = users?.filter(x=>x.role==='user') || [];
+        let selectedUids = [...new Set(selects?.map(s=>s.uid) || [])];
+        let unselect = students.filter(s=>!selectedUids.includes(s.uid));
+        let html='';
+        unselect.forEach(s=>{html+=`<tr><td>${s.uid}</td><td>${s.name}</td><td>${s.dept||'无'}</td></tr>`;});
+        document.getElementById('unselectList').innerHTML=html||'<tr><td colspan="3">全部已选课</td></tr>';
+    }
+    window.refreshUnselect = refreshUnselect;
+
+    window.exportUnselectExcel = function(){
+        let rows = [['学号','姓名','部门']];
+        document.querySelectorAll('#unselectList tr').forEach(tr => {
+            let row = [];
+            tr.querySelectorAll('td').forEach(td => row.push(td.innerText));
+            if(row.length && row[0]!=='全部已选课') rows.push(row);
+        });
+        let ws = XLSX.utils.aoa_to_sheet(rows);
+        let wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, '未选课');
+        XLSX.writeFile(wb, '未选课干事.xlsx');
+    };
+
+})();
+</script>
+</body>
+</html>

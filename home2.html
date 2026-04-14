@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>干事控制台</title>
+<style>
+* {margin:0;padding:0;box-sizing:border-box;font-family:"Microsoft Yahei",Arial,sans-serif;}
+body{background:#f5f7fa;min-height:100vh;}
+.top-bar{height:60px;background:#fff;border-bottom:1px solid #e4e7ed;display:flex;align-items:center;justify-content:space-between;padding:0 20px;position:fixed;top:0;left:0;right:0;z-index:999;}
+.top-bar .logo{font-size:20px;font-weight:bold;color:#303133;}
+.top-bar .user-info{display:flex;align-items:center;gap:15px;}
+.top-bar .user-info .avatar{width:36px;height:36px;border-radius:50%;background:#f5a623;color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;}
+.sidebar{width:200px;background:#304156;position:fixed;top:60px;left:0;bottom:0;padding-top:20px;}
+.sidebar .menu-item{color:#bfcbd9;height:50px;line-height:50px;padding:0 20px;cursor:pointer;transition:all 0.3s;border-left:3px solid transparent;}
+.sidebar .menu-item:hover,.sidebar .menu-item.active{background:#263445;color:#fff;border-left-color:#f5a623;}
+.sidebar .menu-item-danger{background:#F56C6C !important;border-left-color:#F56C6C !important;color:#fff !important;}
+.main-content{margin-left:200px;margin-top:60px;padding:20px;min-height:calc(100vh - 60px);}
+.welcome-card{background:#fff;border-radius:8px;padding:30px;box-shadow:0 2px 12px 0 rgba(0,0,0,0.1);}
+.welcome-card h1{color:#303133;margin-bottom:15px;}
+.page{display:none;}.page.active{display:block;}
+table{width:100%;border-collapse:collapse;margin:20px 0;}
+th,td{border:1px solid #eee;padding:12px;text-align:center;}
+th{background:#f5f7fa;}
+button{background:#409eff;color:white;padding:8px 12px;border:none;border-radius:4px;cursor:pointer;}
+input{width:100%;padding:10px;margin:5px 0;border:1px solid #ddd;border-radius:4px;}
+.time-tip{color:red;font-size:12px;}
+</style>
+</head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<div class="top-bar">
+<div class="logo">干事中心</div>
+<div class="user-info">
+<span id="studentName">干事</span><div class="avatar">干</div>
+</div>
+</div>
+
+<div class="sidebar">
+<div class="menu-item active" onclick="showPage('home')">首页</div>
+<div class="menu-item" onclick="showPage('course')">选课</div>
+<div class="menu-item" onclick="showPage('my')">我的课程</div>
+<div class="menu-item" onclick="showPage('account')">修改账户</div>
+<div class="menu-item" onclick="logout()">退出登录</div>
+<div class="menu-item menu-item-danger" onclick="deleteAccount()">注销账号</div>
+</div>
+
+<div class="main-content">
+<div class="page active" id="page-home">
+<div class="welcome-card"><h1 id="welcomeText">欢迎！</h1></div>
+</div>
+<div class="page" id="page-course">
+<h3>可选课程</h3>
+<table>
+<tr><th>班级</th><th>时间</th><th>地点</th><th>辅导员</th><th>可选数量</th><th>操作</th></tr>
+<tbody id="courseList"></tbody>
+</table>
+</div>
+<div class="page" id="page-my">
+<h3>我的课程</h3>
+<table>
+<tr><th>班级</th><th>时间</th><th>地点</th><th>辅导员</th><th>操作</th></tr>
+<tbody id="myList"></tbody>
+</table>
+</div>
+<div class="page" id="page-account">
+<h3>修改账户</h3>
+<input id="newUid" placeholder="新学号">
+<input id="newPwd" placeholder="新密码">
+<button onclick="updateAccount()">提交</button>
+</div>
+</div>
+
+<script>
+(function() {
+    const SUPABASE_URL = "https://nsyonfiaqniensvcrdao.supabase.co";
+    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5zeW9uZmlhcW5pZW5zdmNyZGFvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwNjIyNDQsImV4cCI6MjA5MTYzODI0NH0.ZxgkRA8Wp2Zy9ujwkya3apTXHECHvmeilf8qf-3MY78";
+
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    const u = JSON.parse(sessionStorage.getItem('user'));
+    if(!u || u.role !== 'user'){alert('请登录');location.href='login.html';}
+
+    // ========== 单点登录检测 ==========
+    let checkInterval = null;
+
+    async function checkSession() {
+        if(!u) return;
+        
+        try {
+            const { data, error } = await sb
+                .from('users')
+                .select('session_token')
+                .eq('uid', u.uid)
+                .maybeSingle();
+            
+            if(error) return;
+            
+            if(data && data.session_token && data.session_token !== u.session_token) {
+                clearInterval(checkInterval);
+                sessionStorage.removeItem('user');
+                
+                const kickModal = document.createElement('div');
+                kickModal.style.cssText = 'display:flex;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);align-items:center;justify-content:center;z-index:10000;';
+                kickModal.innerHTML = `
+                    <div style="width:350px;padding:30px;border-radius:12px;background:#fff;text-align:center;">
+                        <h3 style="color:#f56c6c;margin-bottom:15px;">⚠️ 登录失效</h3>
+                        <p style="margin-bottom:20px;color:#666;">您的账号已在其他地方登录</p>
+                        <button onclick="location.href='login.html'" style="width:120px;padding:10px;background:#409eff;color:#fff;border:none;border-radius:6px;cursor:pointer;">重新登录</button>
+                    </div>
+                `;
+                document.body.appendChild(kickModal);
+            }
+        } catch(err) {
+            console.error('Session check error:', err);
+        }
+    }
+
+    checkInterval = setInterval(checkSession, 5000);
+
+    const now = new Date();
+    const today = (now.getMonth()+1)+"-"+now.getDate();
+    document.getElementById('studentName').innerText = u.name;
+    document.getElementById('welcomeText').innerText = `欢迎您，${u.name}！`;
+
+    window.$ = function(id){return document.getElementById(id);};
+
+    window.showPage = function(id){
+        document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+        document.querySelectorAll('.menu-item').forEach(m=>m.classList.remove('active'));
+        document.getElementById('page-'+id).classList.add('active');
+        document.querySelector(`[onclick="showPage('${id}')"]`).classList.add('active');
+        if(id==='course') loadCourses();
+        if(id==='my') loadMyCourses();
+    };
+
+    window.logout = async function(){
+        clearInterval(checkInterval);
+        if(u){
+            await sb.from('users').update({ session_token: null }).eq('uid', u.uid);
+        }
+        sessionStorage.removeItem('user');
+        location.href='login.html';
+    };
+
+    window.deleteAccount = async function() {
+        if(!confirm("确定注销？"))return;
+        clearInterval(checkInterval);
+        await sb.from('users').delete().eq('uid',u.uid);
+        await sb.from('selects').delete().eq('uid',u.uid);
+        sessionStorage.removeItem('user');
+        alert("注销成功");
+        location.href='login.html';
+    };
+
+    async function loadCourses(){
+        const {data:courses} = await sb.from('courses').select('*');
+        const {data:selects} = await sb.from('selects').select('*').eq('uid',u.uid);
+        const allSelects = await sb.from('selects').select('*');
+        const myIds = (selects||[]).map(s=>s.cid);
+        let html='';
+        if(courses){
+            courses.forEach(c=>{
+                const canView = !c.viewDate || today >= c.viewDate;
+                if(!canView) return;
+                const canSelect = !c.selectDate || today >= c.selectDate;
+                let cnt = (allSelects.data||[]).filter(s=>s.cid===c.id).length;
+                let max = c.max||1;
+                let full = cnt>=max;
+                let btn='';
+                if(myIds.includes(c.id)) btn='<button disabled>已选</button>';
+                else if(full) btn='<button disabled>已满</button>';
+                else if(!canSelect) btn='<span class="time-tip">禁止选课</span>';
+                else btn=`<button onclick="selectCourse('${c.id}')">选课</button>`;
+                html+=`<tr><td>${c.name}</td><td>${c.time}</td><td>${c.loc}</td><td>${c.teacher}</td><td>${max}</td><td>${btn}</td></tr>`;
+            });
+        }
+        document.getElementById('courseList').innerHTML=html||'<tr><td colspan="6">暂无课程</td></tr>';
+    }
+
+    window.loadCourses = loadCourses;
+
+    window.selectCourse = async function(cid){
+        const {data:course} = await sb.from('courses').select('*').eq('id',cid).maybeSingle();
+        if(!course) return;
+        if(course.selectDate && today < course.selectDate){alert("未到时间");return;}
+        const {data:selects} = await sb.from('selects').select('*').eq('cid',cid);
+        if((selects||[]).length >= (course.max||1)){alert("已满");return;}
+        await sb.from('selects').insert([{uid:u.uid,name:u.name,cid:cid}]);
+        loadCourses();
+        alert("选课成功");
+    };
+
+    async function loadMyCourses(){
+        const {data:selects} = await sb.from('selects').select('*').eq('uid',u.uid);
+        const {data:courses} = await sb.from('courses').select('*');
+        let html='';
+        if(selects && courses){
+            selects.forEach(s=>{
+                let c = courses.find(x=>x.id===s.cid);
+                if(c) html+=`<tr><td>${c.name}</td><td>${c.time}</td><td>${c.loc}</td><td>${c.teacher}</td><td><button style="background:red" onclick="quitCourse('${c.id}')">退课</button></td></tr>`;
+            });
+        }
+        document.getElementById('myList').innerHTML=html||'<tr><td colspan="5">未选课</td></tr>';
+    }
+
+    window.loadMyCourses = loadMyCourses;
+
+    window.quitCourse = async function(cid){
+        if(!confirm('确定退课？'))return;
+        await sb.from('selects').delete().eq('uid',u.uid).eq('cid',cid);
+        loadMyCourses();
+        alert('退课成功');
+    };
+
+    window.updateAccount = async function(){
+        let nu = document.getElementById('newUid').value.trim();
+        let np = document.getElementById('newPwd').value.trim();
+        if(!nu && !np){alert('至少改一项');return;}
+        if(np && np.length<6){alert('密码至少6位');return;}
+        
+        const updateData = {};
+        if(nu) updateData.uid = nu;
+        if(np) updateData.pwd = np;
+        
+        const { error } = await sb.from('users').update(updateData).eq('uid',u.uid);
+        if(error){alert('修改失败：'+error.message);return;}
+        
+        if(nu){
+            await sb.from('selects').update({uid:nu}).eq('uid',u.uid);
+        }
+        
+        const updatedUser = {...u};
+        if(nu) updatedUser.uid = nu;
+        sessionStorage.setItem('user',JSON.stringify(updatedUser));
+        
+        alert('修改成功');
+        document.getElementById('newUid').value='';
+        document.getElementById('newPwd').value='';
+    };
+
+    showPage('home');
+})();
+</script>
+</body>
+</html>
