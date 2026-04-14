@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>部长后台</title>
+<style>
+* {margin:0;padding:0;box-sizing:border-box;font-family:"Microsoft Yahei",Arial,sans-serif;}
+body{background:#f5f7fa;min-height:100vh;}
+.top-bar{height:80px;background:#fff;border-bottom:1px solid #e4e7ed;display:flex;align-items:center;justify-content:space-between;padding:0 20px;}
+.top-bar .logo{font-size:28px;font-weight:bold;color:#303133;}
+.top-bar .user-info{display:flex;align-items:center;gap:15px;font-size:20px;}
+.top-bar .user-info .avatar{width:50px;height:50px;border-radius:50%;background:#409eff;color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;}
+.sidebar{width:220px;background:#2b3a55;position:fixed;top:80px;left:0;bottom:0;padding-top:10px;}
+.sidebar .menu-item{color:#bfcbd9;height:60px;line-height:60px;padding:0 20px;cursor:pointer;transition:all 0.3s;border-left:4px solid transparent;font-size:18px;}
+.sidebar .menu-item:hover,.sidebar .menu-item.active{background:#202c3f;color:#fff;border-left-color:#409eff;}
+.sidebar .menu-item-danger{background:#F56C6C !important;border-left-color:#F56C6C !important;color:#fff !important;}
+.main-content{margin-left:220px;margin-top:80px;padding:30px;min-height:calc(100vh - 80px);}
+.page{display:none;background:#fff;border-radius:12px;padding:30px;box-shadow:0 2px 12px 0 rgba(0,0,0,0.1);}
+.page.active{display:block;}
+.welcome-card{background:#fff;border-radius:12px;padding:40px;box-shadow:0 2px 12px rgba(0,0,0,0.1);font-size:36px;font-weight:bold;color:#303133;}
+input,button{padding:12px 20px;margin:8px 0;border-radius:6px;border:1px solid #dcdfe6;font-size:16px;}
+button{background:#409eff;color:#fff;border:none;cursor:pointer;}
+.btn-red{background:#F56C6C;}
+.btn-green{background:#67C23A;}
+table{width:100%;border-collapse:collapse;margin:20px 0;}
+th,td{border:1px solid #ebeef5;padding:15px;text-align:center;font-size:16px;}
+th{background:#f5f7fa;font-size:18px;}
+.excel-box{margin:10px 0;}
+.form-item{margin:15px 0;}
+.form-item label{display:inline-block;width:100px;font-size:16px;}
+</style>
+</head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<div class="top-bar">
+<div class="logo">部长后台</div>
+<div class="user-info">
+<span id="teacherName"></span>
+<div class="avatar" id="teacherAvatar"></div>
+</div>
+</div>
+
+<div class="sidebar">
+<div class="menu-item active" onclick="showPage('home')">首页</div>
+<div class="menu-item" onclick="showPage('student')">干事管理</div>
+<div class="menu-item" onclick="showPage('select')">查看选课</div>
+<div class="menu-item" onclick="showPage('profile')">修改账户</div>
+<div class="menu-item" onclick="logout()">退出登录</div>
+<div class="menu-item menu-item-danger" onclick="deleteTeacherAccount()">注销账号</div>
+</div>
+
+<div class="main-content">
+<div class="page active" id="page-home">
+    <div class="welcome-card" id="welcomeText">欢迎回来！</div>
+</div>
+
+<div class="page" id="page-student">
+<h2>干事管理</h2>
+<div class="excel-box">
+<input type="file" id="studentExcel" accept=".xlsx,.xls">
+<button class="btn-green" onclick="importStudentExcel()">批量导入</button>
+<button class="btn-red" onclick="batchResetPwd()" style="margin-left:10px;">批量重置选中干事密码为 111111</button>
+<button class="btn-red" onclick="batchDeleteStudent()" style="margin-left:10px;">批量删除选中干事</button>
+</div>
+<input id="suid" placeholder="学号" style="width:18%">
+<input id="sname" placeholder="姓名" style="width:18%">
+<input id="spwd" placeholder="密码" style="width:18%">
+<input id="sdept" placeholder="所属部门" style="width:18%" readonly>
+<button onclick="addStudent()" style="width:18%">提交</button>
+<table>
+<tr><th><input type="checkbox" id="checkAll" onclick="toggleAll()"> 全选</th><th>学号</th><th>姓名</th><th>密码</th><th>部门</th><th>操作</th></tr>
+<tbody id="studentList"></tbody>
+</table>
+</div>
+
+<div class="page" id="page-select">
+<h2>查看选课</h2>
+<button class="btn-green" onclick="exportSelectExcel()">导出选课表</button>
+<table>
+<tr><th>班级</th><th>时间</th><th>地点</th><th>辅导员</th><th>干事</th><th>部门</th></tr>
+<tbody id="selectList"></tbody>
+</table>
+</div>
+
+<div class="page" id="page-profile">
+<h2>修改账户</h2>
+<div class="form-item">
+<label>当前工号：</label>
+<span id="oldUid" style="font-weight:bold; color:#333;"></span>
+</div>
+<div class="form-item">
+<label>新工号：</label>
+<input type="text" id="newUid" placeholder="不修改则留空">
+</div>
+<div class="form-item">
+<label>新密码：</label>
+<input type="password" id="newPwd" placeholder="不修改则留空">
+</div>
+<button onclick="saveProfile()">保存</button>
+</div>
+</div>
+
+<script>
+(function() {
+    const SUPABASE_URL = "https://nsyonfiaqniensvcrdao.supabase.co";
+    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5zeW9uZmlhcW5pZW5zdmNyZGFvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwNjIyNDQsImV4cCI6MjA5MTYzODI0NH0.ZxgkRA8Wp2Zy9ujwkya3apTXHECHvmeilf8qf-3MY78";
+
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    const t = JSON.parse(sessionStorage.getItem('user'));
+    if(!t || t.role !== 'teacher'){alert('请登录');location.href='login.html';}
+
+    document.getElementById('teacherName').innerText = t.name;
+    document.getElementById('teacherAvatar').innerText = t.name.charAt(0);
+    document.getElementById('welcomeText').innerText = `欢迎回来，${t.name}！`;
+    document.getElementById('oldUid').innerText = t.uid;
+    document.getElementById('sdept').value = t.dept || '';
+
+    window.$ = function(id){return document.getElementById(id);};
+
+    async function getMyStudents() {
+        const { data } = await sb.from('users').select('*').eq('role', 'user').eq('dept', t.dept);
+        return data || [];
+    }
+
+    window.toggleAll = function(){
+        let checked = document.getElementById('checkAll').checked;
+        document.querySelectorAll('.studentCheck').forEach(cb => cb.checked = checked);
+    };
+
+    window.batchResetPwd = async function(){
+        let checks = document.querySelectorAll('.studentCheck:checked');
+        if(checks.length === 0){ alert('请先选择要重置的干事！'); return; }
+        if(!confirm(`确定重置选中的 ${checks.length} 名干事密码为 111111 吗？`)) return;
+        let uids = Array.from(checks).map(cb => cb.getAttribute('data-uid'));
+        await sb.from('users').update({ pwd: '111111' }).in('uid', uids);
+        refreshStudent();
+        alert('✅ 批量重置密码成功！新密码：111111');
+    };
+
+    window.batchDeleteStudent = async function(){
+        let checks = document.querySelectorAll('.studentCheck:checked');
+        if(checks.length === 0){ alert('请先选择要删除的干事！'); return; }
+        if(!confirm(`确定删除选中的 ${checks.length} 名干事吗？`)) return;
+        let uids = Array.from(checks).map(cb => cb.getAttribute('data-uid'));
+        await sb.from('users').delete().in('uid', uids);
+        document.getElementById('checkAll').checked = false;
+        refreshStudent();
+        alert(`✅ 成功删除 ${checks.length} 名干事！`);
+    };
+
+    window.showPage = function(pageId){
+        document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+        document.querySelectorAll('.menu-item').forEach(m=>m.classList.remove('active'));
+        document.getElementById('page-'+pageId).classList.add('active');
+        document.querySelector(`.menu-item[onclick="showPage('${pageId}')"]`).classList.add('active');
+        if(pageId==='select') refreshSelect();
+        if(pageId==='student') refreshStudent();
+    };
+
+    window.logout = function(){
+        if(confirm('确定退出？')){
+            sessionStorage.removeItem('user');
+            location.href='login.html';
+        }
+    };
+
+    window.deleteTeacherAccount = async function() {
+        if (!confirm("⚠️ 确定要永久注销当前账号吗？")) return;
+        await sb.from('users').delete().eq('uid', t.uid).eq('role', 'teacher');
+        sessionStorage.removeItem('user');
+        alert("✅ 账号注销成功！");
+        location.href = "login.html";
+    };
+
+    async function refreshStudent(){
+        let students = await getMyStudents();
+        let html='';
+        students.forEach(s=>{
+            html+=`<tr>
+                <td><input type="checkbox" class="studentCheck" data-uid="${s.uid}"></td>
+                <td>${s.uid}</td><td>${s.name}</td><td>${s.pwd}</td><td>${s.dept||'无'}</td>
+                <td><button onclick="editStudent('${s.uid}')">修改</button><button class="btn-red" onclick="delStudent('${s.uid}')">删除</button></td>
+            </tr>`;
+        });
+        document.getElementById('studentList').innerHTML=html||'<tr><td colspan="6">无</td></tr>';
+    }
+
+    window.refreshStudent = refreshStudent;
+
+    window.addStudent = async function(){
+        let uid = document.getElementById('suid').value.trim();
+        let name = document.getElementById('sname').value.trim();
+        let pwd = document.getElementById('spwd').value.trim();
+        let dept = t.dept;
+        if(!uid||!name||!pwd){alert('请填写完整');return;}
+        if(pwd.length<6){alert('密码至少6位');return;}
+        await sb.from('users').delete().eq('uid', uid).eq('role', 'user');
+        await sb.from('users').insert([{ uid, name, pwd, role: 'user', dept }]);
+        document.getElementById('suid').value='';
+        document.getElementById('sname').value='';
+        document.getElementById('spwd').value='';
+        refreshStudent();
+    };
+
+    window.editStudent = async function(uid){
+        const { data } = await sb.from('users').select('*').eq('uid', uid).maybeSingle();
+        if(data){
+            document.getElementById('suid').value = data.uid;
+            document.getElementById('sname').value = data.name;
+            document.getElementById('spwd').value = data.pwd;
+        }
+    };
+
+    window.delStudent = async function(uid){
+        if(!confirm('确定删除？')) return;
+        await sb.from('users').delete().eq('uid', uid);
+        refreshStudent();
+    };
+
+    window.importStudentExcel = async function(){
+        let f = document.getElementById('studentExcel').files[0];
+        if(!f){alert('请选择文件');return;}
+        
+        let r = new FileReader();
+        r.onload = async e => {
+            try {
+                let wb = XLSX.read(e.target.result, {type:'binary'});
+                let sheet = wb.Sheets[wb.SheetNames[0]];
+                let data = XLSX.utils.sheet_to_json(sheet);
+                
+                console.log('读取到 ' + data.length + ' 条数据');
+                
+                let validData = [];
+                let uids = [];
+                
+                for(let row of data){
+                    let uid = row['学号'] || row['uid'] || row['UID'] || row['工号'];
+                    let name = row['姓名'] || row['name'] || row['Name'];
+                    let pwd = row['密码'] || row['pwd'] || row['PWD'];
+                    
+                    if(uid && name && pwd){
+                        uid = String(uid).trim();
+                        name = String(name).trim();
+                        pwd = String(pwd).trim();
+                        
+                        validData.push({
+                            uid: uid,
+                            name: name,
+                            pwd: pwd,
+                            role: 'user',
+                            dept: t.dept
+                        });
+                        uids.push(uid);
+                    }
+                }
+                
+                console.log('有效数据 ' + validData.length + ' 条');
+                
+                if(validData.length === 0){
+                    alert('没有有效数据');
+                    return;
+                }
+                
+                if(uids.length > 0){
+                    await sb.from('users').delete().in('uid', uids).eq('role', 'user');
+                }
+                
+                const { error } = await sb.from('users').insert(validData);
+                
+                if(error){
+                    console.error('插入错误:', error);
+                    alert('导入失败：' + error.message);
+                    return;
+                }
+                
+                refreshStudent();
+                alert('✅ 导入成功！共导入 ' + validData.length + ' 条数据');
+                document.getElementById('studentExcel').value='';
+            } catch(err) {
+                console.error('导入错误:', err);
+                alert('导入失败：' + err.message);
+            }
+        };
+        r.readAsBinaryString(f);
+    };
+
+    async function refreshSelect(){
+        let myStus = await getMyStudents();
+        let myStuIds = myStus.map(s => s.uid);
+        const { data: courses } = await sb.from('courses').select('*');
+        const { data: selects } = await sb.from('selects').select('*');
+        let html='';
+        if(courses){
+            courses.forEach(c=>{
+                let list = (selects||[]).filter(s=>s.cid === c.id && myStuIds.includes(s.uid));
+                let arr = list.map(s=>s.name+'('+s.uid+')').join(' ') || '无';
+                let depts = list.map(s=>{ let stu = myStus.find(x=>x.uid === s.uid); return stu?.dept || '无'; }).join(' ');
+                html+=`<tr><td>${c.name}</td><td>${c.time}</td><td>${c.loc}</td><td>${c.teacher}</td><td>${arr}</td><td>${depts}</td></tr>`;
+            });
+        }
+        document.getElementById('selectList').innerHTML=html||'<tr><td colspan="6">无</td></tr>';
+    }
+
+    window.refreshSelect = refreshSelect;
+
+    window.exportSelectExcel = async function(){
+        let myStus = await getMyStudents();
+        let myStuIds = myStus.map(s => s.uid);
+        const { data: courses } = await sb.from('courses').select('*');
+        const { data: selects } = await sb.from('selects').select('*');
+        let arr=[['班级','时间','地点','辅导员','干事','部门']];
+        if(courses){
+            courses.forEach(c=>{
+                let sel = (selects||[]).filter(s=>s.cid===c.id && myStuIds.includes(s.uid));
+                sel.forEach(s=>{
+                    let stu = myStus.find(x=>x.uid===s.uid);
+                    arr.push([c.name,c.time,c.loc,c.teacher, s.name+'('+s.uid+')', stu?.dept||'无']);
+                });
+            });
+        }
+        let ws = XLSX.utils.aoa_to_sheet(arr);
+        let wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb,ws,'选课表');
+        XLSX.writeFile(wb,'部长选课表.xlsx');
+    };
+
+    window.saveProfile = async function(){
+        let newUid = document.getElementById('newUid').value.trim();
+        let newPwd = document.getElementById('newPwd').value.trim();
+        if(!newUid && !newPwd){alert('至少修改一项');return;}
+        if(newPwd && newPwd.length < 6){alert('密码至少6位');return;}
+        let finalUid = newUid || t.uid;
+        let finalPwd = newPwd || t.pwd;
+        await sb.from('users').update({ uid: finalUid, pwd: finalPwd }).eq('uid', t.uid).eq('role', 'teacher');
+        await sb.from('selects').update({ uid: finalUid }).eq('uid', t.uid);
+        sessionStorage.setItem('user', JSON.stringify({...t, uid: finalUid}));
+        document.getElementById('oldUid').innerText = finalUid;
+        alert('修改成功！');
+        document.getElementById('newUid').value='';
+        document.getElementById('newPwd').value='';
+    };
+})();
+</script>
+</body>
+</html>

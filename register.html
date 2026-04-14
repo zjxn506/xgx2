@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>干事注册</title>
+<style>
+* {margin:0;padding:0;box-sizing:border-box;font-family:"Microsoft Yahei",Arial,sans-serif;}
+body {
+    background:url('https://picsum.photos/id/1015/1920/1080') no-repeat center center fixed;
+    background-size:cover;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    min-height:100vh;
+}
+.register-box {
+    background:rgba(255,255,255,0.95);
+    padding:50px 40px;
+    border-radius:20px;
+    box-shadow:0 8px 32px rgba(0,0,0,0.1);
+    width:100%;
+    max-width:500px;
+}
+.register-box h1 {
+    text-align:left;
+    color:#333;
+    margin-bottom:35px;
+    font-size:36px;
+    font-weight:bold;
+}
+.input-item {
+    margin-bottom:25px;
+}
+.input-item input {
+    width:100%;
+    padding:18px 20px;
+    border:1px solid #ddd;
+    border-radius:12px;
+    font-size:18px;
+    outline:none;
+    transition:border-color 0.3s;
+}
+.input-item input:focus {
+    border-color:#409eff;
+}
+.btn {
+    width:100%;
+    padding:18px;
+    border:none;
+    border-radius:12px;
+    font-size:22px;
+    font-weight:bold;
+    color:#fff;
+    cursor:pointer;
+    margin-bottom:15px;
+    transition:opacity 0.3s;
+}
+.btn:hover {opacity:0.9;}
+.btn-register {background:#409eff;}
+.btn-back {background:#67C23A;}
+</style>
+</head>
+<body>
+
+<div class="register-box">
+<h1>干事注册</h1>
+<div class="input-item"><input type="text" id="uid" placeholder="学号（数字）"></div>
+<div class="input-item"><input type="text" id="name" placeholder="姓名"></div>
+<div class="input-item"><input type="password" id="pwd" placeholder="密码（至少6位）"></div>
+<div class="input-item"><input type="text" id="dept" placeholder="所属部门（如：宣传部/办公室）"></div>
+<button class="btn btn-register" onclick="register()">注册</button>
+<button class="btn btn-back" onclick="goBack()">返回登录</button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+(function() {
+    const SUPABASE_URL = "https://nsyonfiaqniensvcrdao.supabase.co";
+    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5zeW9uZmlhcW5pZW5zdmNyZGFvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwNjIyNDQsImV4cCI6MjA5MTYzODI0NH0.ZxgkRA8Wp2Zy9ujwkya3apTXHECHvmeilf8qf-3MY78";
+
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    window.register = async function() {
+        const uid = document.getElementById('uid').value.trim();
+        const name = document.getElementById('name').value.trim();
+        const pwd = document.getElementById('pwd').value.trim();
+        const dept = document.getElementById('dept').value.trim();
+        
+        if(!uid||!name||!pwd||!dept){alert('请填写完整');return;}
+        if(pwd.length<6){alert('密码至少6位');return;}
+        if(!/^\d+$/.test(uid)){alert('学号必须数字');return;}
+
+        const { data: existing } = await sb.from('users').select('uid').eq('uid', uid).maybeSingle();
+        if(existing) { alert('该学号已被注册'); return; }
+
+        const { error } = await sb.from('users').insert([{ uid, name, pwd, role:'user', dept }]);
+        if(error){ alert('注册失败：'+error.message); return; }
+        alert('注册成功！');
+        window.location.href = 'login.html';
+    };
+
+    window.goBack = function() {
+        window.location.href = 'login.html';
+    };
+})();
+</script>
+</body>
+</html>
