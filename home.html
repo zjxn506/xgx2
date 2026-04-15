@@ -23,8 +23,10 @@ table{width:100%;border-collapse:collapse;margin:20px 0;}
 th,td{border:1px solid #eee;padding:12px;text-align:center;}
 th{background:#f5f7fa;}
 button{background:#409eff;color:white;padding:8px 12px;border:none;border-radius:4px;cursor:pointer;}
-input{width:100%;padding:10px;margin:5px 0;border:1px solid #ddd;border-radius:4px;}
+.btn-red{background:#F56C6C;}
+input{padding:8px;margin:5px 0;border:1px solid #ddd;border-radius:4px;}
 .time-tip{color:red;font-size:12px;}
+.check-input{width:100%;padding:6px;border:1px solid #ddd;border-radius:4px;}
 </style>
 </head>
 <body>
@@ -40,6 +42,7 @@ input{width:100%;padding:10px;margin:5px 0;border:1px solid #ddd;border-radius:4
 <div class="menu-item active" onclick="showPage('home')">首页</div>
 <div class="menu-item" onclick="showPage('course')">选课</div>
 <div class="menu-item" onclick="showPage('my')">我的课程</div>
+<div class="menu-item" onclick="showPage('checkCourse')">查课情况</div>
 <div class="menu-item" onclick="showPage('account')">修改账户</div>
 <div class="menu-item" onclick="logout()">退出登录</div>
 <div class="menu-item menu-item-danger" onclick="deleteAccount()">注销账号</div>
@@ -63,6 +66,16 @@ input{width:100%;padding:10px;margin:5px 0;border:1px solid #ddd;border-radius:4
 <tbody id="myList"></tbody>
 </table>
 </div>
+<div class="page" id="page-checkCourse">
+<h3>查课情况填写 - 部门：<span id="deptName"></span></h3>
+<table>
+<tr>
+    <th>星期</th><th>课次</th><th>课程</th><th>教师</th>
+    <th>人数</th><th>情况</th><th>实到人数</th><th>操作</th>
+</tr>
+<tbody id="checkCourseList"></tbody>
+</table>
+</div>
 <div class="page" id="page-account">
 <h3>修改账户</h3>
 <input id="newUid" placeholder="新学号">
@@ -81,10 +94,48 @@ input{width:100%;padding:10px;margin:5px 0;border:1px solid #ddd;border-radius:4
     const u = JSON.parse(sessionStorage.getItem('user'));
     if(!u || u.role !== 'user'){alert('请登录');location.href='login.html';}
 
+    // ========== 单点登录检测 ==========
+    let checkInterval = null;
+
+    async function checkSession() {
+        if(!u) return;
+        
+        try {
+            const { data, error } = await sb
+                .from('users')
+                .select('session_token')
+                .eq('uid', u.uid)
+                .maybeSingle();
+            
+            if(error) return;
+            
+            if(data && data.session_token && data.session_token !== u.session_token) {
+                clearInterval(checkInterval);
+                sessionStorage.removeItem('user');
+                
+                const kickModal = document.createElement('div');
+                kickModal.style.cssText = 'display:flex;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);align-items:center;justify-content:center;z-index:10000;';
+                kickModal.innerHTML = `
+                    <div style="width:350px;padding:30px;border-radius:12px;background:#fff;text-align:center;">
+                        <h3 style="color:#f56c6c;margin-bottom:15px;">⚠️ 登录失效</h3>
+                        <p style="margin-bottom:20px;color:#666;">您的账号已在其他地方登录</p>
+                        <button onclick="location.href='login.html'" style="width:120px;padding:10px;background:#409eff;color:#fff;border:none;border-radius:6px;cursor:pointer;">重新登录</button>
+                    </div>
+                `;
+                document.body.appendChild(kickModal);
+            }
+        } catch(err) {
+            console.error('Session check error:', err);
+        }
+    }
+
+    checkInterval = setInterval(checkSession, 5000);
+
     const now = new Date();
     const today = (now.getMonth()+1)+"-"+now.getDate();
     document.getElementById('studentName').innerText = u.name;
     document.getElementById('welcomeText').innerText = `欢迎您，${u.name}！`;
+    document.getElementById('deptName').innerText = u.dept || '未设置';
 
     window.$ = function(id){return document.getElementById(id);};
 
@@ -95,15 +146,21 @@ input{width:100%;padding:10px;margin:5px 0;border:1px solid #ddd;border-radius:4
         document.querySelector(`[onclick="showPage('${id}')"]`).classList.add('active');
         if(id==='course') loadCourses();
         if(id==='my') loadMyCourses();
+        if(id==='checkCourse') loadCheckCourses();
     };
 
-    window.logout = function(){
+    window.logout = async function(){
+        clearInterval(checkInterval);
+        if(u){
+            await sb.from('users').update({ session_token: null }).eq('uid', u.uid);
+        }
         sessionStorage.removeItem('user');
         location.href='login.html';
     };
 
     window.deleteAccount = async function() {
         if(!confirm("确定注销？"))return;
+        clearInterval(checkInterval);
         await sb.from('users').delete().eq('uid',u.uid);
         await sb.from('selects').delete().eq('uid',u.uid);
         sessionStorage.removeItem('user');
@@ -169,6 +226,58 @@ input{width:100%;padding:10px;margin:5px 0;border:1px solid #ddd;border-radius:4
         await sb.from('selects').delete().eq('uid',u.uid).eq('cid',cid);
         loadMyCourses();
         alert('退课成功');
+    };
+
+    // ========== 查课情况 ==========
+    async function loadCheckCourses(){
+        const { data } = await sb.from('check_courses')
+            .select('*')
+            .eq('dept', u.dept)
+            .order('week')
+            .order('lesson');
+        
+        let html = '';
+        if(data && data.length > 0){
+            data.forEach(c => {
+                html += `<tr>
+                    <td>${c.week || ''}</td>
+                    <td>${c.lesson || ''}</td>
+                    <td>${c.course || ''}</td>
+                    <td>${c.teacher || ''}</td>
+                    <td>${c.capacity || 0}</td>
+                    <td>
+                        <input type="text" id="situation_${c.id}" value="${c.situation || ''}" placeholder="填写情况" class="check-input" style="width:100px;">
+                    </td>
+                    <td>
+                        <input type="number" id="actual_${c.id}" value="${c.actual !== null ? c.actual : ''}" placeholder="实到" class="check-input" style="width:70px;">
+                    </td>
+                    <td>
+                        <button onclick="saveCheckCourse('${c.id}')">保存</button>
+                    </td>
+                </tr>`;
+            });
+        }
+        document.getElementById('checkCourseList').innerHTML = html || '<tr><td colspan="8">暂无查课数据</td></tr>';
+    }
+    window.loadCheckCourses = loadCheckCourses;
+
+    window.saveCheckCourse = async function(id){
+        let situation = document.getElementById(`situation_${id}`).value.trim();
+        let actual = parseInt(document.getElementById(`actual_${id}`).value);
+        actual = isNaN(actual) ? null : actual;
+        
+        const { error } = await sb.from('check_courses')
+            .update({ 
+                situation: situation || null, 
+                actual: actual 
+            })
+            .eq('id', id);
+        
+        if(error){
+            alert('保存失败：' + error.message);
+        } else {
+            alert('保存成功');
+        }
     };
 
     window.updateAccount = async function(){
